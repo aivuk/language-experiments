@@ -9,10 +9,14 @@ Architecture:
 
 Usage:
     python book_png.py <text_file> [--metric METRIC] [--color COLOR] [--output FILE]
+    python book_png.py <text_file> --html  # generate interactive HTML viewer
     python book_png.py --list  # show available metrics and color schemes
 """
 
 import argparse
+import base64
+import io
+import json
 import math
 import random
 import sys
@@ -171,7 +175,7 @@ METRICS = {
 # RENDERER
 # =============================================================================
 
-def render(values, color_fn, output_path):
+def render(values, color_fn, output_path, words=None):
     """
     Render a sequence of values as a square image.
 
@@ -179,24 +183,305 @@ def render(values, color_fn, output_path):
         values: iterable of floats (0.0-1.0)
         color_fn: function that maps float -> RGB tuple
         output_path: where to save the PNG
+        words: optional list of words (for JSON export)
+
+    Returns:
+        tuple: (PIL.Image, size, list of (word, value) pairs)
     """
     values = list(values)
     if not values:
         print("No values to render", file=sys.stderr)
-        return
+        return None, 0, []
 
     size = int(math.ceil(math.sqrt(len(values))))
     img = Image.new("RGB", (size, size), color=(0, 0, 0))
 
+    word_data = []
     for i, val in enumerate(values):
         x = i % size
         y = i // size
         # Clamp value to 0-1 range
-        val = max(0.0, min(1.0, val))
-        img.putpixel((x, y), color_fn(val))
+        clamped = max(0.0, min(1.0, val))
+        img.putpixel((x, y), color_fn(clamped))
+        if words and i < len(words):
+            word_data.append((words[i], val))
 
     img.save(output_path)
     print(f"Saved: {output_path} ({size}x{size} pixels, {len(values)} values)")
+    return img, size, word_data
+
+
+def render_html(img, size, word_data, output_path, metric_name, color_name, source_file):
+    """
+    Generate an interactive HTML viewer with zoom/pan and word tooltips.
+
+    Args:
+        img: PIL.Image object
+        size: image dimension (size x size)
+        word_data: list of (word, value) tuples
+        output_path: where to save the HTML file
+        metric_name: name of the metric used
+        color_name: name of the color scheme used
+        source_file: original text file name
+    """
+    # Convert image to base64
+    img_buffer = io.BytesIO()
+    img.save(img_buffer, format='PNG')
+    img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+
+    # Create word lookup (just the words array - position is implicit)
+    words_json = json.dumps([w for w, v in word_data])
+    values_json = json.dumps([round(v, 4) for w, v in word_data])
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{source_file} - {metric_name}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            background: #1a1a1a;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            overflow: hidden;
+            height: 100vh;
+        }}
+        #header {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        #header h1 {{
+            font-size: 14px;
+            font-weight: normal;
+        }}
+        #header .info {{
+            font-size: 12px;
+            color: #888;
+        }}
+        #controls {{
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }}
+        #controls button {{
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 5px 12px;
+            cursor: pointer;
+            border-radius: 3px;
+        }}
+        #controls button:hover {{
+            background: #444;
+        }}
+        #zoom-level {{
+            font-size: 12px;
+            color: #888;
+            min-width: 60px;
+        }}
+        #container {{
+            position: absolute;
+            top: 50px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            cursor: grab;
+        }}
+        #container.dragging {{
+            cursor: grabbing;
+        }}
+        #canvas-wrapper {{
+            position: absolute;
+            transform-origin: 0 0;
+        }}
+        #image {{
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }}
+        #tooltip {{
+            position: fixed;
+            background: rgba(0,0,0,0.9);
+            border: 1px solid #444;
+            padding: 8px 12px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 200;
+            display: none;
+            font-size: 13px;
+            max-width: 300px;
+        }}
+        #tooltip .word {{
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 4px;
+        }}
+        #tooltip .details {{
+            color: #aaa;
+            font-size: 11px;
+        }}
+        #help {{
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            font-size: 11px;
+            color: #555;
+        }}
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>{source_file}</h1>
+        <div class="info">{metric_name} · {color_name} · {size}×{size} px · {len(word_data):,} words</div>
+        <div id="controls">
+            <button onclick="zoomIn()">+ Zoom</button>
+            <button onclick="zoomOut()">− Zoom</button>
+            <button onclick="resetView()">Reset</button>
+            <span id="zoom-level">100%</span>
+        </div>
+    </div>
+    <div id="container">
+        <div id="canvas-wrapper">
+            <img id="image" src="data:image/png;base64,{img_base64}" width="{size}" height="{size}">
+        </div>
+    </div>
+    <div id="tooltip">
+        <div class="word"></div>
+        <div class="details"></div>
+    </div>
+    <div id="help">Scroll to zoom · Drag to pan · Hover for words</div>
+
+    <script>
+        const SIZE = {size};
+        const WORDS = {words_json};
+        const VALUES = {values_json};
+
+        const container = document.getElementById('container');
+        const wrapper = document.getElementById('canvas-wrapper');
+        const image = document.getElementById('image');
+        const tooltip = document.getElementById('tooltip');
+        const zoomLabel = document.getElementById('zoom-level');
+
+        let scale = 1;
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let dragStartPanX = 0;
+        let dragStartPanY = 0;
+
+        function updateTransform() {{
+            wrapper.style.transform = `translate(${{panX}}px, ${{panY}}px) scale(${{scale}})`;
+            zoomLabel.textContent = Math.round(scale * 100) + '%';
+        }}
+
+        function centerImage() {{
+            const rect = container.getBoundingClientRect();
+            panX = (rect.width - SIZE * scale) / 2;
+            panY = (rect.height - SIZE * scale) / 2;
+            updateTransform();
+        }}
+
+        function zoomIn() {{
+            scale = Math.min(scale * 1.5, 200);
+            centerImage();
+        }}
+
+        function zoomOut() {{
+            scale = Math.max(scale / 1.5, 0.1);
+            centerImage();
+        }}
+
+        function resetView() {{
+            scale = 1;
+            centerImage();
+        }}
+
+        // Mouse wheel zoom
+        container.addEventListener('wheel', (e) => {{
+            e.preventDefault();
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Position relative to image before zoom
+            const imgX = (mouseX - panX) / scale;
+            const imgY = (mouseY - panY) / scale;
+
+            // Apply zoom
+            const zoomFactor = e.deltaY < 0 ? 1.2 : 0.8;
+            scale = Math.max(0.1, Math.min(200, scale * zoomFactor));
+
+            // Adjust pan to keep mouse position stable
+            panX = mouseX - imgX * scale;
+            panY = mouseY - imgY * scale;
+
+            updateTransform();
+        }});
+
+        // Pan with mouse drag
+        container.addEventListener('mousedown', (e) => {{
+            isDragging = true;
+            container.classList.add('dragging');
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            dragStartPanX = panX;
+            dragStartPanY = panY;
+        }});
+
+        window.addEventListener('mousemove', (e) => {{
+            if (isDragging) {{
+                panX = dragStartPanX + (e.clientX - dragStartX);
+                panY = dragStartPanY + (e.clientY - dragStartY);
+                updateTransform();
+            }}
+
+            // Tooltip
+            const rect = image.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / (rect.width / SIZE));
+            const y = Math.floor((e.clientY - rect.top) / (rect.height / SIZE));
+            const idx = y * SIZE + x;
+
+            if (x >= 0 && x < SIZE && y >= 0 && y < SIZE && idx < WORDS.length) {{
+                const word = WORDS[idx];
+                const value = VALUES[idx];
+                tooltip.querySelector('.word').textContent = word;
+                tooltip.querySelector('.details').textContent = `Position: ${{idx.toLocaleString()}} · Value: ${{value.toFixed(4)}}`;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX + 15) + 'px';
+                tooltip.style.top = (e.clientY + 15) + 'px';
+            }} else {{
+                tooltip.style.display = 'none';
+            }}
+        }});
+
+        window.addEventListener('mouseup', () => {{
+            isDragging = false;
+            container.classList.remove('dragging');
+        }});
+
+        // Initial centering
+        window.addEventListener('load', centerImage);
+        window.addEventListener('resize', centerImage);
+    </script>
+</body>
+</html>'''
+
+    Path(output_path).write_text(html)
+    print(f"Saved: {output_path} (interactive HTML viewer)")
 
 
 # =============================================================================
@@ -237,6 +522,14 @@ Examples:
                         choices=list(COLOR_MAPPERS.keys()),
                         help='Color scheme (default: red-blue)')
     parser.add_argument('-o', '--output', help='Output filename (default: <input>-<metric>.png)')
+    parser.add_argument('--html', action='store_true',
+                        help='Generate interactive HTML viewer with zoom and word tooltips')
+    parser.add_argument('-i', '--ignore-case', action='store_true',
+                        help='Treat words case-insensitively (lowercase all)')
+    parser.add_argument('--ignore-punctuation', action='store_true',
+                        help='Filter out punctuation tokens')
+    parser.add_argument('--ignore-numbers', action='store_true',
+                        help='Filter out numeric tokens')
 
     args = parser.parse_args()
 
@@ -256,7 +549,23 @@ Examples:
     # Read and tokenize
     text = input_path.read_text(encoding='utf-8', errors='replace')
     words = nltk.word_tokenize(text)
-    print(f"Loaded {len(words)} words from {args.file}")
+    original_count = len(words)
+
+    # Apply filters
+    if args.ignore_case:
+        words = [w.lower() for w in words]
+
+    if args.ignore_punctuation:
+        words = [w for w in words if w.isalnum()]
+
+    if args.ignore_numbers:
+        words = [w for w in words if not w.isnumeric()]
+
+    print(f"Loaded {original_count} tokens from {args.file}", end='')
+    if len(words) != original_count:
+        print(f" ({len(words)} after filtering)")
+    else:
+        print()
 
     # Generate output filename
     if args.output:
@@ -268,9 +577,20 @@ Examples:
     metric_fn = METRICS[args.metric]
     color_fn = COLOR_MAPPERS[args.color]
 
+    # Determine which words to pass (for bigram metrics, we need the bigram pairs)
+    if args.metric in ('bigram-prob', 'bigram-diversity'):
+        display_words = [f"{w1} → {w2}" for w1, w2 in nltk.bigrams(words)]
+    else:
+        display_words = words
+
     # Render
     values = metric_fn(words)
-    render(values, color_fn, output_path)
+    img, size, word_data = render(values, color_fn, output_path, words=display_words)
+
+    # Generate HTML viewer if requested
+    if args.html and img:
+        html_path = Path(output_path).stem + '.html'
+        render_html(img, size, word_data, html_path, args.metric, args.color, input_path.name)
 
 
 if __name__ == '__main__':
