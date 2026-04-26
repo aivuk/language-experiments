@@ -22,8 +22,8 @@ def test_window_metric_values():
     values, labels = metric_values(["a", "b", "a", ".", "c"], "lexical-diversity", window_size=4)
     assert values == [2 / 3, 1.0]
     assert len(labels) == 2
+    assert labels[0] == "tokens 0-3: a b a"
 
 
 def test_normalize_with_shared_domain():
     assert normalize([10, 15, 20], domain=(10, 20)) == [0.0, 0.5, 1.0]
-

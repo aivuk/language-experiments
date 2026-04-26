@@ -129,7 +129,7 @@ def metric_values(tokens: list[str], metric: str, *, window_size: int | None = N
 
 def window_metric_values(tokens: list[str], metric: str, *, window_size: int, window_step: int | None = None) -> MetricResult:
     chunks = windows(tokens, window_size, window_step)
-    labels = [f"tokens {index * (window_step or window_size)}-{index * (window_step or window_size) + len(chunk) - 1}" for index, chunk in enumerate(chunks)]
+    labels = [window_label(chunk, index, window_step or window_size) for index, chunk in enumerate(chunks)]
     if metric in WINDOW_METRICS:
         return [WINDOW_METRICS[metric](chunk) for chunk in chunks], labels
     if metric in TOKEN_METRICS:
@@ -141,6 +141,16 @@ def window_metric_values(tokens: list[str], metric: str, *, window_size: int, wi
     raise ValueError(f"Unknown metric: {metric}")
 
 
+def window_label(chunk: list[str], index: int, step: int) -> str:
+    start = index * step
+    end = start + len(chunk) - 1
+    words = [token for token in chunk if not is_punctuation(token)]
+    excerpt = " ".join(words[:14])
+    if len(words) > 14:
+        excerpt += " ..."
+    return f"tokens {start}-{end}: {excerpt}" if excerpt else f"tokens {start}-{end}"
+
+
 def normalize(values: list[float], *, domain: tuple[float, float] | None = None) -> list[float]:
     if not values:
         return []
@@ -148,4 +158,3 @@ def normalize(values: list[float], *, domain: tuple[float, float] | None = None)
     if high == low:
         return [0.0 for _value in values]
     return [(value - low) / (high - low) for value in values]
-

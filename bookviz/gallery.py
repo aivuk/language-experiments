@@ -6,7 +6,7 @@ import html
 import shutil
 from pathlib import Path
 
-from .metrics import ALL_METRICS
+from .metrics import ALL_METRICS, TOKEN_METRICS
 from .pipeline import RenderOptions, render_book, subtitle
 from .text import slugify
 
@@ -35,7 +35,9 @@ def generate_gallery(
         for metric in metrics:
             if metric not in ALL_METRICS:
                 raise ValueError(f"Unknown metric: {metric}")
-            options = RenderOptions(metric=metric, color=color, window_size=window_size, window_step=window_step)
+            metric_window_size = None if metric in TOKEN_METRICS else window_size
+            metric_window_step = None if metric in TOKEN_METRICS else window_step
+            options = RenderOptions(metric=metric, color=color, window_size=metric_window_size, window_step=metric_window_step)
             slug = f"{slugify(book.stem)}-{slugify(metric)}"
             png_path = assets_dir / f"{slug}.png"
             result = render_book(book, png_path, options, html=True)
@@ -98,4 +100,3 @@ def index_html(pages: list[dict[str, str]]) -> str:
 </body>
 </html>
 """
-

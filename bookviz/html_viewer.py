@@ -61,8 +61,9 @@ def viewer_html(image: Image.Image, *, title: str, subtitle: str, labels: list[s
     #stage.dragging {{ cursor: grabbing; }}
     #wrapper {{ position: absolute; transform-origin: 0 0; }}
     img {{ display: block; image-rendering: pixelated; image-rendering: crisp-edges; }}
-    #tip {{ position: fixed; display: none; pointer-events: none; z-index: 3; max-width: 320px; padding: 8px 10px; background: rgba(0,0,0,.9); border: 1px solid #555; border-radius: 4px; font-size: 12px; }}
+    #tip {{ position: fixed; display: none; pointer-events: none; z-index: 3; max-width: 360px; padding: 8px 10px; background: rgba(0,0,0,.9); border: 1px solid #555; border-radius: 4px; font-size: 12px; }}
     #tip strong {{ display: block; margin-bottom: 4px; font-size: 14px; }}
+    #tip span {{ overflow-wrap: anywhere; }}
   </style>
 </head>
 <body>
@@ -94,7 +95,12 @@ def viewer_html(image: Image.Image, *, title: str, subtitle: str, labels: list[s
     let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
     function update() {{ wrapper.style.transform = `translate(${{panX}}px, ${{panY}}px) scale(${{scale}})`; zoom.textContent = Math.round(scale * 100) + "%"; }}
     function center() {{ const r = stage.getBoundingClientRect(); panX = (r.width - image.width * scale) / 2; panY = (r.height - image.height * scale) / 2; update(); }}
-    function resetView() {{ scale = 1; center(); }}
+    function initialScale() {{
+      const r = stage.getBoundingClientRect();
+      const fit = Math.min(r.width / image.width, r.height / image.height) * 0.88;
+      return Math.max(1, Math.min(64, fit));
+    }}
+    function resetView() {{ scale = initialScale(); center(); }}
     function zoomBy(factor) {{ scale = Math.max(.1, Math.min(200, scale * factor)); center(); }}
     stage.addEventListener("wheel", (event) => {{
       event.preventDefault();
@@ -118,9 +124,8 @@ def viewer_html(image: Image.Image, *, title: str, subtitle: str, labels: list[s
         tip.style.left = event.clientX + 14 + "px"; tip.style.top = event.clientY + 14 + "px"; tip.style.display = "block";
       }} else {{ tip.style.display = "none"; }}
     }});
-    addEventListener("load", center); addEventListener("resize", center);
+    addEventListener("load", resetView); addEventListener("resize", resetView);
   </script>
 </body>
 </html>
 """
-
