@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     gutenberg.add_argument("--force", action="store_true")
     gutenberg.set_defaults(func=cmd_gutenberg)
 
-    gallery = subparsers.add_parser("gallery", help="Generate a static HTML gallery.")
+    gallery = subparsers.add_parser("gallery", help="Generate the static client-side gallery.")
     gallery.add_argument("--input", type=Path, default=Path("books"))
     gallery.add_argument("--output", type=Path, default=Path("site"))
     gallery.add_argument("--metrics", nargs="+", default=["word-freq", "lexical-diversity"])
@@ -157,4 +157,3 @@ def cmd_list(_args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     main()
-

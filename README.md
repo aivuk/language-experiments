@@ -57,7 +57,7 @@ Download a book from Project Gutenberg:
 uv run bookviz gutenberg 2701 --title moby-dick
 ```
 
-Generate a static gallery:
+Generate the GitHub Pages gallery:
 
 ```bash
 uv run bookviz gallery \
@@ -66,6 +66,10 @@ uv run bookviz gallery \
   --metrics word-freq lexical-diversity bigram-diversity \
   --window-size 200
 ```
+
+The gallery is a static browser app. It publishes the book text files and lets
+the browser compute metrics, change window size, change window step, switch
+books, and redraw the visualization without regenerating images in CI.
 
 ## Metrics
 
@@ -92,7 +96,6 @@ inside each window.
 
 ## GitHub Pages
 
-The workflow at `.github/workflows/pages.yml` builds the gallery with `uv` and
-publishes the generated `site/` directory to GitHub Pages. Enable Pages in the
-repository settings and choose GitHub Actions as the source.
-
+The workflow at `.github/workflows/pages.yml` builds the client-side gallery
+with `uv` and publishes the generated `site/` directory to GitHub Pages. Enable
+Pages in the repository settings and choose GitHub Actions as the source.
