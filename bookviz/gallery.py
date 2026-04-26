@@ -134,6 +134,7 @@ def index_html(
     const DEFAULT_WINDOW_STEP = {window_step_json};
     const TOKEN_METRICS = ["word-freq", "word-freq-linear", "bigram-prob", "bigram-diversity", "word-length", "word-position", "unique-word"];
     const WINDOW_METRICS = ["avg-word-length", "lexical-diversity", "punctuation-density", "repetition-density", "sentence-length"];
+    const FIXED_SCALE_METRICS = ["lexical-diversity", "punctuation-density", "repetition-density", "word-freq-linear", "bigram-prob", "word-length", "word-position", "unique-word"];
     const ALL_METRICS = [...TOKEN_METRICS, ...WINDOW_METRICS];
     const tokenRe = /[\\p{{L}}\\p{{N}}_]+|[^\\p{{L}}\\p{{N}}_\\s]/gu;
     const state = {{ text: "", tokens: [], values: [], labels: [], size: 0 }};
@@ -202,12 +203,14 @@ def index_html(
       const result = useWindows
         ? windowValues(state.tokens, metric, Number(els.windowSize.value), Number(els.windowStep.value))
         : tokenValues(state.tokens, metric);
-      state.values = normalize(result.values);
+      state.values = normalize(result.values, scaleDomain(metric));
       state.labels = result.labels;
       draw(state.values);
       els.meta.innerHTML = [
         `<strong>${{state.tokens.length.toLocaleString()}}</strong> tokens`,
         `<strong>${{state.values.length.toLocaleString()}}</strong> pixels`,
+        `raw range ${{formatRange(valueRange(result.values))}}`,
+        scaleDomain(metric) ? "color scale 0-1" : "color scale current min-max",
         useWindows ? `windowed, size ${{els.windowSize.value}}, step ${{els.windowStep.value}}` : "word-level pixels",
       ].join("<br>");
       setDetails("Hover over the image", "");
@@ -257,6 +260,7 @@ def index_html(
       for (let start = 0; start < tokens.length; start += step) {{
         const chunk = tokens.slice(start, start + size);
         if (!chunk.length) continue;
+        if (chunk.length < size * 0.5) continue;
         labels.push(windowLabel(chunk, start));
         if (WINDOW_METRICS.includes(metric)) values.push(windowMetric(chunk, metric));
         else {{
@@ -294,16 +298,32 @@ def index_html(
       return !/[\\p{{L}}\\p{{N}}_]/u.test(token);
     }}
 
-    function normalize(values) {{
+    function normalize(values, domain = null) {{
       if (!values.length) return [];
+      const range = domain || valueRange(values);
+      const min = range[0];
+      const max = range[1];
+      if (min === max) return values.map(() => 0);
+      return values.map(value => (value - min) / (max - min));
+    }}
+
+    function scaleDomain(metric) {{
+      return FIXED_SCALE_METRICS.includes(metric) ? [0, 1] : null;
+    }}
+
+    function valueRange(values) {{
+      if (!values.length) return [0, 0];
       let min = values[0];
       let max = values[0];
       for (const value of values) {{
         if (value < min) min = value;
         if (value > max) max = value;
       }}
-      if (min === max) return values.map(() => 0);
-      return values.map(value => (value - min) / (max - min));
+      return [min, max];
+    }}
+
+    function formatRange(range) {{
+      return `${{range[0].toFixed(4)}}-${{range[1].toFixed(4)}}`;
     }}
 
     function maxOf(values) {{

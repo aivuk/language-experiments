@@ -24,4 +24,7 @@ def test_gallery_generates_client_side_explorer(tmp_path: Path):
     assert "const BOOKS" in index_html
     assert "windowSize" in index_html
     assert "lockStep" in index_html
+    assert "FIXED_SCALE_METRICS" in index_html
+    assert "chunk.length < size * 0.5" in index_html
+    assert "raw range" in index_html
     assert "lexical-diversity" in index_html
