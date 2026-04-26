@@ -113,6 +113,9 @@ def index_html(
       <label>Window size <span id="windowSizeValue"></span>
         <input id="windowSize" type="range" min="25" max="1000" step="25">
       </label>
+      <div class="row">
+        <label><input id="lockStep" type="checkbox" checked> lock step to size</label>
+      </div>
       <label>Window step <span id="windowStepValue"></span>
         <input id="windowStep" type="range" min="25" max="1000" step="25">
       </label>
@@ -139,6 +142,7 @@ def index_html(
       metric: document.getElementById("metric"),
       color: document.getElementById("color"),
       perToken: document.getElementById("perToken"),
+      lockStep: document.getElementById("lockStep"),
       windowSize: document.getElementById("windowSize"),
       windowStep: document.getElementById("windowStep"),
       windowSizeValue: document.getElementById("windowSizeValue"),
@@ -156,8 +160,14 @@ def index_html(
       els.color.value = DEFAULT_COLOR;
       els.windowSize.value = DEFAULT_WINDOW_SIZE;
       els.windowStep.value = DEFAULT_WINDOW_STEP;
-      for (const el of [els.book, els.metric, els.color, els.perToken, els.windowSize, els.windowStep]) {{
-        el.addEventListener("input", () => el === els.book ? loadBook() : render());
+      els.lockStep.checked = DEFAULT_WINDOW_SIZE === DEFAULT_WINDOW_STEP;
+      els.book.addEventListener("input", loadBook);
+      for (const el of [els.metric, els.color, els.perToken, els.lockStep, els.windowSize, els.windowStep]) {{
+        el.addEventListener("input", () => {{
+          if (el === els.windowSize && els.lockStep.checked) els.windowStep.value = els.windowSize.value;
+          if (el === els.lockStep && els.lockStep.checked) els.windowStep.value = els.windowSize.value;
+          render();
+        }});
       }}
       els.canvas.addEventListener("mousemove", showDetails);
       els.canvas.addEventListener("mouseleave", () => setDetails("Hover over the image", ""));
@@ -183,8 +193,10 @@ def index_html(
       const canUsePerToken = TOKEN_METRICS.includes(metric);
       els.perToken.disabled = !canUsePerToken;
       const useWindows = !canUsePerToken || !els.perToken.checked;
+      if (els.lockStep.checked) els.windowStep.value = els.windowSize.value;
       els.windowSize.disabled = !useWindows;
-      els.windowStep.disabled = !useWindows;
+      els.lockStep.disabled = !useWindows;
+      els.windowStep.disabled = !useWindows || els.lockStep.checked;
       els.windowSizeValue.textContent = els.windowSize.value;
       els.windowStepValue.textContent = els.windowStep.value;
       const result = useWindows

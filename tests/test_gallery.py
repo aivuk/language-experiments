@@ -23,4 +23,5 @@ def test_gallery_generates_client_side_explorer(tmp_path: Path):
     assert copied_book == "one two one three"
     assert "const BOOKS" in index_html
     assert "windowSize" in index_html
+    assert "lockStep" in index_html
     assert "lexical-diversity" in index_html
